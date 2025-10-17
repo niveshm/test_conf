@@ -13,12 +13,12 @@ from joblib import Parallel, delayed
 
 rules_file = "150925115904_r[1,2,3]_n200_exp_s12_rules.json"
 dataset = "icews14"
-data_type = "train"
+data_type = "valid"
 rules_dict = json.load(open(f"rules/{dataset}/" + rules_file))
 rules_dict = {int(k): v for k, v in rules_dict.items()}
 rule_lengths = [1, 2, 3]
-max_paths_per_len = {1:10, 2:10, 3:10}
-neg_samples = 5
+max_paths_per_len = {1:5, 2:5, 3:5}
+neg_samples = 3
 window = 0
 
 data = Grapher(dataset, data_type=data_type)
@@ -78,6 +78,11 @@ def find_matching_paths(q_src, rule, edges):
 
         except KeyError:
             return pd.DataFrame()
+    
+
+    ## drop timestamp columns
+    ts_cols = [col for col in rule_walks.columns if "timestamp" in col]
+    rule_walks = rule_walks.drop(columns=ts_cols)
 
     return rule_walks
 
@@ -127,7 +132,7 @@ def extract_paths(c_edges):
             rules = rules_dict[r]
             paths = {}
             for lent in rule_lengths:
-                paths[lent] = []
+                paths[lent] = set()
 
             if len(rules) > 0:
                 for rule in rules:
@@ -135,35 +140,70 @@ def extract_paths(c_edges):
                         continue
 
                     rule_walks = find_matching_paths(s, rule, edges)
+                    # breakpoint()
 
                     if rule_walks.shape[0] > 0:
                         # rule_walks_f = rule_walks[rule_walks[rule_walks.columns[-2]] == o]
                         # if rule_walks_f.shape[0] > 0:
                         #     print("found")
-                        #     breakpoint()
                         if rule["var_constraints"]:
                             rule_walks = ra.check_var_constraints(
                                 rule["var_constraints"], rule_walks
                             )
                         rule_walks = rule_walks[rule_walks["entity_"+str(len(rule["body_rels"]))] == o]
+
+                        ## find unique paths
+                        
                         if rule_walks.shape[0] > 0:
+                            # breakpoint()
+                            rule_walks = rule_walks.drop_duplicates()
                             rule_walks = rule_walks.to_numpy()
                             # remaining walks
                             walks_to_add = max_paths_per_len[len(rule["body_rels"])] - len(paths[len(rule["body_rels"])])
-                            
-                            try:
-                                prob = np.exp(rule_walks[:, 3] - t) / np.sum(np.exp(rule_walks[:, 3] - t))
-                                rule_walks = rule_walks[np.random.choice(rule_walks.shape[0], min(walks_to_add, rule_walks.shape[0]), replace=False, p=prob)]
-                            except ValueError:
-                                rule_walks = rule_walks[np.random.choice(rule_walks.shape[0], min(walks_to_add, rule_walks.shape[0]), replace=False)]
 
-                            paths[len(rule["body_rels"])].extend(rule_walks.tolist())
+                            
+                            
+                            # try:
+                            #     prob = np.exp(rule_walks[:, 3] - t) / np.sum(np.exp(rule_walks[:, 3] - t))
+                            #     rule_walks = rule_walks[np.random.choice(rule_walks.shape[0], min(walks_to_add, rule_walks.shape[0]), replace=False, p=prob)]
+                            # except ValueError:
+                            
+                            # rule_walks = rule_walks[np.random.choice(rule_walks.shape[0], min(walks_to_add, rule_walks.shape[0]), replace=False)]
+                            # breakpoint()
+                            cnt = 0
+                            # breakpoint()
+                            for rule_walk in rule_walks.tolist():
+                                if cnt >= walks_to_add:
+                                    break
+
+                                
+                                ## don't add if already present
+                                # if len(paths[len(rule["body_rels"])]) > 0:
+                                #     if not np.any(np.all(np.array(paths[len(rule["body_rels"])]) == np.array(rule_walk), axis=1)):
+                                #         paths[len(rule["body_rels"])] = np.vstack([paths[len(rule["body_rels"])], np.array(rule_walk)])
+                                
+                                # else:
+                                #     paths[len(rule["body_rels"])] = np.array([rule_walk])
+                                # cnt += 1
+
+                                if tuple(rule_walk) not in paths[len(rule["body_rels"])]:
+                                    paths[len(rule["body_rels"])].add(tuple(rule_walk))
+                                    cnt += 1
+
+                                # breakpoint()
+
+                            # paths[len(rule["body_rels"])].extend(rule_walks.tolist())
                             # print(len(paths[len(rule["body_rels"])]))
 
             # print(len(paths[1]), len(paths[2]), len(paths[3]))
 
+            for lent in rule_lengths:
+                paths[lent] = list(paths[lent])
+
             if len(paths[1]) + len(paths[2]) + len(paths[3]) > 0:
                 edge_paths[(s, r, o, t, y)] = paths
+            # else:
+            #     print("No paths found for edge:", (s, r, o, t, y))
         
         if idx % 1000 == 0:
             print(f"Processed {idx} edges...")
@@ -202,6 +242,8 @@ output = Parallel(n_jobs=num_processes)(
     delayed(extract_paths)(all_edges[i*num_queries : (i+1)*num_queries]) for i in range(num_processes)
 )
 
+# output = extract_paths([(np.int64(6795), np.int64(155), np.int64(2083), np.int64(237), np.int64(1))])
+# breakpoint()
 
 edge_paths = dict()
 for out in output:
@@ -271,7 +313,7 @@ for out in output:
 
 
 ## save paths
-with open(f"./preds/{dataset}/{data_type}_edge_paths.pkl", "wb") as f:
+with open(f"./preds/{dataset}/{data_type}_edge_paths_notime.pkl", "wb") as f:
     pkl.dump(edge_paths, f)
             
 
