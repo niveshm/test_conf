@@ -20,11 +20,11 @@ class ConfPredict(nn.Module):
 
         # self.softmax = nn.Softmax(dim=-1)
     
-    def forward(self, input_ids, attention_mask, token_type_ids=None):
+    def forward(self, input_ids, attention_mask, token_type_ids):
         # input_ids = x["input_ids"].to(self.device)
         # attn_mask = x["attention_mask"].to(self.device)
 
-        output = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        output = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
 
         pooled_output = output.pooler_output
         logits = self.classifier(pooled_output)
