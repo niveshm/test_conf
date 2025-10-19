@@ -13,24 +13,23 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model_dict = torch.load(f"./saved_models/best_bert_model.pth", map_location=device)
 model.load_state_dict(model_dict)
+model = model.to(device)
+
+num_processes = 12
 
 dataset = "icews14"
 batch_size = 32
-text_data_path = f"./preds/{dataset}/process_0_edges.txt"
 test_edges_file = f"./preds/{dataset}/test_edges.pkl"
 test_edges = pkl.load(open(test_edges_file, "rb"))
-test_dataset = TestPathTextDataset(text_data_path, max_length=250)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 a = 0.5
 lmda = 0.1
-
 preds_file = f"./preds/{dataset}/bert_lmda{lmda}_a{a}_preds.pkl"
 preds = {}
 
 ## check if preds_file exists
-if os.path.exists(preds_file):
-    preds = pkl.load(open(preds_file, "rb"))
-    print(f"Loaded existing predictions from {preds_file}")
+# if os.path.exists(preds_file):
+#     preds = pkl.load(open(preds_file, "rb"))
+#     print(f"Loaded existing predictions from {preds_file}")
 
 
 def get_scores(model, dataloader, device):
@@ -66,8 +65,17 @@ def get_scores(model, dataloader, device):
                 
                 # breakpoint()
 
+for process_id in range(num_processes):
+    text_data_path = f"./preds/{dataset}/process_{process_id}_edges.txt"
 
-get_scores(model, test_loader, device)
+    test_dataset = TestPathTextDataset(text_data_path, max_length=250)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    get_scores(model, test_loader, device)
 
+
+for ind in preds:
+    for cand in preds[ind]:
+        preds[ind][cand] = 1 - np.prod(1 - np.array(preds[ind][cand]))
+        preds[ind] = dict(sorted(preds[ind].items(), key=lambda item: item[1], reverse=True))
 pkl.dump(preds, open(preds_file, "wb"))
 print(f"Saved predictions to {preds_file}")
