@@ -24,6 +24,7 @@ test_edges = pkl.load(open(test_edges_file, "rb"))
 a = 0.5
 lmda = 0.1
 preds_file = f"./preds/{dataset}/bert_lmda{lmda}_a{a}_preds.pkl"
+org_preds_file = f"./preds/{dataset}/bert_lmda{lmda}_a{a}_org_preds.pkl"
 preds = {}
 
 ## check if preds_file exists
@@ -73,9 +74,14 @@ for process_id in range(num_processes):
     get_scores(model, test_loader, device)
 
 
+## save preds
+with open(org_preds_file, "wb") as f:
+    pkl.dump(preds, f)
+
 for ind in preds:
     for cand in preds[ind]:
         preds[ind][cand] = 1 - np.prod(1 - np.array(preds[ind][cand]))
-        preds[ind] = dict(sorted(preds[ind].items(), key=lambda item: item[1], reverse=True))
-pkl.dump(preds, open(preds_file, "wb"))
+    preds[ind] = dict(sorted(preds[ind].items(), key=lambda item: item[1], reverse=True))
+with open(preds_file, "wb") as f:
+    pkl.dump(preds, f)
 print(f"Saved predictions to {preds_file}")
